@@ -25,3 +25,6 @@ strip-extras = true
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
