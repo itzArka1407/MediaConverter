@@ -1,0 +1,2 @@
+[tool.pip-tools]
+strip-extras = true
