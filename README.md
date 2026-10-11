@@ -10,11 +10,11 @@ Casual python project to convert formats and codex of images and audio files. I 
 Load all the dependencies(both dev and prod)
 
 ```bash
-    pip install -r requirements_dev.txt
+pip install -r requirements_dev.txt
 ```
 
 For getting only the prod dependencies
 
 ```bash
-    pip install -r requirements.txt
+pip install -r requirements.txt
 ```
