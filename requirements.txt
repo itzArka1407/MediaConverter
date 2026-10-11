@@ -1,9 +1,0 @@
-# CORE runtime
-Pillow>=10.3,<12           # image open/save/convert
-pydub>=0.25.1              # audio manipulation (needs ffmpeg binary)
-ffmpeg-python>=0.2.0       # streaming/large-file fallback
-mutagen>=1.47              # audio metadata read/write
-audioop-lts; python_version >= "3.13"
-
-# Optional for specific use cases
-pillow-avif-plugin>=1.4    # AVIF encode/decode for Pillow
