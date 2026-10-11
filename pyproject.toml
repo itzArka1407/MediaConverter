@@ -14,7 +14,7 @@ avif = ["pillow-avif-plugin>=1.4"]
 dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "pip-tools>=7.4"]
 
 [project.scripts]
-media-converter = "converter.cli:main"
+mediaconv = "converter.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
