@@ -2,14 +2,15 @@
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 from .audio import convert_audio
 from .config import AudioConfig, ImageConfig
 from .images import convert_image
+from .batch import run_batch
 
 log = logging.getLogger("converter")
-
 
 def _parse_resize(value: str) -> tuple[int, int]:
     """Produce appropriate resize value from the resizing string"""
@@ -29,6 +30,9 @@ def _configure_logging(verbose: bool) -> None:
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+    # Discard logging from 3rd party libs during DEBUG
+    for noisy in ("PIL", "PIL.image", "PIL.PngImagePlugin"):
+        logging.getLogger(noisy).setLevel(logging.INFO)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output", type=Path, required=True, metavar="PATH", help="output file")
     p.add_argument("--type", choices=["image", "audio"], required=True)
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--workers", type=int, metavar="N", help="No of worker threads in parallel: Default - no. of CPU cores", default=os.cpu_count() or 1)
 
     img = p.add_argument_group("image options")
     img.add_argument("--image-format", default="WEBP", metavar="FMT", help="The output image format: {JPEG, PNG, WEBP, etc..}")
@@ -68,6 +73,7 @@ def main() -> int:
         log.error("input does not exist: %s", args.input)
         return 1
 
+    # Build configs once; they're reused across all files in a batch
     if args.type == "image":
         image_cfg = ImageConfig(
             format=args.image_format,
@@ -75,7 +81,7 @@ def main() -> int:
             resize=args.resize,
             keep_exif=not args.no_exif,
         )
-        ok = convert_image(args.input, image_cfg, args.output)
+        audio_cfg = AudioConfig()   # unused, but required by run_batch signature
     else:
         audio_cfg = AudioConfig(
             format=args.audio_format,
@@ -84,9 +90,23 @@ def main() -> int:
             channels=args.channels,
             normalize=args.normalize,
         )
-        ok = convert_audio(args.input, audio_cfg, args.output)
+        image_cfg = ImageConfig()   # unused
 
-    return 0 if ok else 1
+    # Single file: convert directly
+    if args.input.is_file():
+        if args.type == "image":
+            ok = convert_image(args.input, image_cfg, args.output)
+        else:
+            ok = convert_audio(args.input, audio_cfg, args.output)
+        return 0 if ok else 1
+
+    # Directory: batch
+    result = run_batch(args.input, args.output, args.type, image_cfg, audio_cfg)
+    log.info(
+        "batch complete: %d succeeded, %d failed",
+        result.succeeded, result.failed,
+    )
+    return 0 if result.failed == 0 else 1
 
 
 if __name__ == "__main__":
