@@ -71,6 +71,7 @@ def run_batch(
     """
     result = BatchResult()
 
+    # Make selections based on media type and carry out conversions of those files only 
     if media_type == "image":
         extensions = IMAGE_EXTENSIONS
         new_suffix = f".{image_cfg.format.lower()}"
@@ -88,9 +89,10 @@ def run_batch(
         for src in files
     ]
 
-    log.info("found %d %s file(s) — using %d worker(s)",
+    log.info("found %d %s file(s) | using %d worker(s)",
              len(jobs), media_type, workers)
 
+    # For single worker - run conversion of media in sync using this loop
     if workers <= 1:
         for job in jobs:
             if _run_one(job, media_type, image_cfg, audio_cfg):
@@ -99,6 +101,7 @@ def run_batch(
                 result.failed += 1
         return result
 
+    # For multiple workers, spawn the threads and run the conversion in parallel
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(_run_one, job, media_type, image_cfg, audio_cfg): job
@@ -109,8 +112,9 @@ def run_batch(
             try:
                 ok = future.result()
             except Exception as exc:
-                log.error("✗ unexpected error on %s: %s", job.src.name, exc)
+                log.error("unexpected error on %s: %s", job.src.name, exc)
                 ok = False
+            # IMPORTANT: Make the updates on the main thread ONLY - don't update inside job runner - might be a race
             if ok:
                 result.succeeded += 1
             else:

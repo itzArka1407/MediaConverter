@@ -2,9 +2,14 @@
 
 import argparse
 import logging
+import os
+import time
 from pathlib import Path
 
+from .metadata import get_version
+
 from .audio import convert_audio
+from .batch import run_batch
 from .config import AudioConfig, ImageConfig
 from .images import convert_image
 
@@ -12,9 +17,9 @@ log = logging.getLogger("converter")
 
 
 def _parse_resize(value: str) -> tuple[int, int]:
-    """Produce appropriate resize value from the resizing string"""
+    """Parse 'WxH' into a tuple of ints."""
     try:
-        w, h = value.lower().split("x") # Split into 2 parts at 'x' - resize into those components
+        w, h = value.lower().split("x")
         return int(w), int(h)
     except (ValueError, AttributeError) as exc:
         raise argparse.ArgumentTypeError(
@@ -29,6 +34,9 @@ def _configure_logging(verbose: bool) -> None:
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+    # Keep third-party libraries quiet even at DEBUG
+    for noisy in ("PIL", "PIL.Image", "PIL.PngImagePlugin"):
+        logging.getLogger(noisy).setLevel(logging.INFO)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,23 +45,41 @@ def build_parser() -> argparse.ArgumentParser:
         description="Convert images and audio between formats.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("input", type=Path, help="input file")
-    p.add_argument("-o", "--output", type=Path, required=True, metavar="PATH", help="output file")
+    p.add_argument("input", type=Path, help="input file or directory")
+    p.add_argument("-o", "--output", type=Path, required=True, metavar="PATH",
+                   help="output file (single input) or directory (batch input)")
     p.add_argument("--type", choices=["image", "audio"], required=True)
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument(
+        "--workers",
+        type=int,
+        metavar="N",
+        default=os.cpu_count() or 1,
+        help="number of parallel worker threads (default: CPU count)",
+    )
+    p.add_argument("--version", action="version", version=f"%(prog)s {get_version()}") # Version metadata
 
     img = p.add_argument_group("image options")
-    img.add_argument("--image-format", default="WEBP", metavar="FMT", help="The output image format: {JPEG, PNG, WEBP, etc..}")
-    img.add_argument("--quality", type=int, default=90, metavar="INT", help="The output image quality: [1-100]")
-    img.add_argument("--resize", type=_parse_resize, metavar="WxH", help="If the image dimensions are to be resized")
-    img.add_argument("--no-exif", action="store_true", help="Strip EXIF metadata from the output image")
+    img.add_argument("--image-format", default="WEBP", metavar="FMT",
+                     help="output image format (JPEG, PNG, WEBP, AVIF, ...)")
+    img.add_argument("--quality", type=int, default=90, metavar="INT",
+                     help="output image quality 1-100 for lossy formats")
+    img.add_argument("--resize", type=_parse_resize, metavar="WxH",
+                     help="resize output, e.g. 1920x1080")
+    img.add_argument("--no-exif", action="store_true",
+                     help="strip EXIF metadata from output")
 
     aud = p.add_argument_group("audio options")
-    aud.add_argument("--audio-format", default="mp3", metavar="FMT", help="Audio format of the output: {OGG, WAV, MP3, etc..}")
-    aud.add_argument("--bitrate", default="320k", help="Bitrate of the output audio file")
-    aud.add_argument("--sample-rate", type=int, metavar="HZ", help="Resampling audio to rate: e.g. 44100")
-    aud.add_argument("--channels", type=int, choices=[1, 2], help="Mono(1) or Stereo(2)")
-    aud.add_argument("--normalize", action="store_true", help="apply EBU R128 loudness normalization (-14 LUFS)")
+    aud.add_argument("--audio-format", default="mp3", metavar="FMT",
+                     help="output audio format (mp3, ogg, opus, flac, wav, ...)")
+    aud.add_argument("--bitrate", default="320k",
+                     help="bitrate for lossy formats, e.g. 192k")
+    aud.add_argument("--sample-rate", type=int, metavar="HZ",
+                     help="resample to this rate, e.g. 44100")
+    aud.add_argument("--channels", type=int, choices=[1, 2],
+                     help="1 for mono, 2 for stereo")
+    aud.add_argument("--normalize", action="store_true",
+                     help="apply EBU R128 loudness normalization (-14 LUFS)")
 
     return p
 
@@ -68,25 +94,52 @@ def main() -> int:
         log.error("input does not exist: %s", args.input)
         return 1
 
-    if args.type == "image":
-        image_cfg = ImageConfig(
-            format=args.image_format,
-            quality=args.quality,
-            resize=args.resize,
-            keep_exif=not args.no_exif,
-        )
-        ok = convert_image(args.input, image_cfg, args.output)
-    else:
-        audio_cfg = AudioConfig(
-            format=args.audio_format,
-            bitrate=args.bitrate,
-            sample_rate=args.sample_rate,
-            channels=args.channels,
-            normalize=args.normalize,
-        )
-        ok = convert_audio(args.input, audio_cfg, args.output)
+    if args.workers < 1:
+        log.error("--workers must be >= 1 (got %d)", args.workers)
+        return 1
 
-    return 0 if ok else 1
+    # Build both configs once; batch and single-file paths share them.
+    image_cfg = ImageConfig(
+        format=args.image_format,
+        quality=args.quality,
+        resize=args.resize,
+        keep_exif=not args.no_exif,
+    )
+    audio_cfg = AudioConfig(
+        format=args.audio_format,
+        bitrate=args.bitrate,
+        sample_rate=args.sample_rate,
+        channels=args.channels,
+        normalize=args.normalize,
+    )
+
+    # Single file: direct conversion
+    if args.input.is_file():
+        if args.type == "image":
+            ok = convert_image(args.input, image_cfg, args.output)
+        else:
+            ok = convert_audio(args.input, audio_cfg, args.output)
+        return 0 if ok else 1
+
+    # Directory: batch (parallel if workers > 1)
+    start = time.perf_counter()
+    result = run_batch(
+        args.input,
+        args.output,
+        args.type,
+        image_cfg,
+        audio_cfg,
+        workers=args.workers,
+    )
+    elapsed = time.perf_counter() - start
+
+    log.info(
+        "batch complete: %d succeeded, %d failed in %.2fs",
+        result.succeeded,
+        result.failed,
+        elapsed,
+    )
+    return 0 if result.failed == 0 else 1
 
 
 if __name__ == "__main__":
