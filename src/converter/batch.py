@@ -1,6 +1,7 @@
-"""Batch conversion across a directory tree."""
+"""Batch conversion across a directory tree, with optional parallelism."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,13 @@ class BatchResult:
     skipped: int = 0
 
 
+@dataclass
+class _Job:
+    """One unit of work: a source file and its destination."""
+    src: Path
+    dst: Path
+
+
 def _collect_files(root: Path, extensions: set[str]) -> list[Path]:
     """Return every file under `root` whose suffix matches `extensions`."""
     return [
@@ -36,9 +44,18 @@ def _collect_files(root: Path, extensions: set[str]) -> list[Path]:
 
 
 def _output_path(src: Path, root: Path, out_dir: Path, new_suffix: str) -> Path:
-    """Compute the output path, preserving the relative structure under `root`."""
+    """Compute the output path, preserving relative structure under `root`."""
     relative = src.relative_to(root)
     return (out_dir / relative).with_suffix(new_suffix)
+
+
+def _run_one(job: _Job, media_type: str,
+             image_cfg: ImageConfig, audio_cfg: AudioConfig) -> bool:
+    """Execute a single job. Returns True on success."""
+    if media_type == "image":
+        return convert_image(job.src, image_cfg, job.dst)
+    return convert_audio(job.src, audio_cfg, job.dst)
+
 
 def run_batch(
     src_dir: Path,
@@ -46,8 +63,12 @@ def run_batch(
     media_type: str,
     image_cfg: ImageConfig,
     audio_cfg: AudioConfig,
+    workers: int = 1,
 ) -> BatchResult:
-    """Convert every compatible file under `src_dir` into `out_dir`."""
+    """Convert every compatible file under `src_dir` into `out_dir`.
+
+    Uses up to `workers` threads in parallel. `workers=1` means serial.
+    """
     result = BatchResult()
 
     if media_type == "image":
@@ -62,19 +83,37 @@ def run_batch(
         log.warning("no %s files found under %s", media_type, src_dir)
         return result
 
-    log.info("found %d %s file(s)", len(files), media_type)
+    jobs = [
+        _Job(src=src, dst=_output_path(src, src_dir, out_dir, new_suffix))
+        for src in files
+    ]
 
-    for src in files:
-        dst = _output_path(src, src_dir, out_dir, new_suffix)
+    log.info("found %d %s file(s) — using %d worker(s)",
+             len(jobs), media_type, workers)
 
-        if media_type == "image":
-            ok = convert_image(src, image_cfg, dst)
-        else:
-            ok = convert_audio(src, audio_cfg, dst)
+    if workers <= 1:
+        for job in jobs:
+            if _run_one(job, media_type, image_cfg, audio_cfg):
+                result.succeeded += 1
+            else:
+                result.failed += 1
+        return result
 
-        if ok:
-            result.succeeded += 1
-        else:
-            result.failed += 1
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_run_one, job, media_type, image_cfg, audio_cfg): job
+            for job in jobs
+        }
+        for future in as_completed(futures):
+            job = futures[future]
+            try:
+                ok = future.result()
+            except Exception as exc:
+                log.error("✗ unexpected error on %s: %s", job.src.name, exc)
+                ok = False
+            if ok:
+                result.succeeded += 1
+            else:
+                result.failed += 1
 
     return result
