@@ -9,7 +9,7 @@ from pathlib import Path
 from .metadata import get_version
 
 from .audio import convert_audio
-from .batch import run_batch
+from .batch import run_batch, IMAGE_EXTENSIONS, AUDIO_EXTENSIONS
 from .config import AudioConfig, ImageConfig
 from .images import convert_image
 
@@ -38,6 +38,15 @@ def _configure_logging(verbose: bool) -> None:
     for noisy in ("PIL", "PIL.Image", "PIL.PngImagePlugin"):
         logging.getLogger(noisy).setLevel(logging.INFO)
 
+def _infer_type(src: Path) -> str | None:
+    """Get the type of media from the path"""
+    suffix = src.suffix.lower()
+    if suffix in IMAGE_EXTENSIONS:
+        return "image"
+    if suffix in AUDIO_EXTENSIONS:
+        return "audio"
+    return None
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -48,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input", type=Path, help="input file or directory")
     p.add_argument("-o", "--output", type=Path, required=True, metavar="PATH",
                    help="output file (single input) or directory (batch input)")
-    p.add_argument("--type", choices=["image", "audio"], required=True)
+    p.add_argument("--type", choices=["image", "audio"])
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument(
         "--workers",
@@ -113,8 +122,17 @@ def main() -> int:
         normalize=args.normalize,
     )
 
+
     # Single file: direct conversion
     if args.input.is_file():
+        # if no typing is provided, compute the typing
+        if args.type is None:
+            media_type = _infer_type(args.input)
+            if media_type is None:
+                parser.error("Cannot infer type of media")
+            else:
+                args.type = media_type
+
         if args.type == "image":
             ok = convert_image(args.input, image_cfg, args.output)
         else:
@@ -126,7 +144,8 @@ def main() -> int:
     result = run_batch(
         args.input,
         args.output,
-        args.type,
+        # For batch processing, typing is mandatory
+        args.type if args.type is not None else parser.error("Provide type for the conversion"),
         image_cfg,
         audio_cfg,
         workers=args.workers,
