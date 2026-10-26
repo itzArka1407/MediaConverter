@@ -50,11 +50,11 @@ def _output_path(src: Path, root: Path, out_dir: Path, new_suffix: str) -> Path:
 
 
 def _run_one(job: _Job, media_type: str,
-             image_cfg: ImageConfig, audio_cfg: AudioConfig) -> bool:
+             image_cfg: ImageConfig, audio_cfg: AudioConfig, delete_original: bool) -> bool:
     """Execute a single job. Returns True on success."""
     if media_type == "image":
-        return convert_image(job.src, image_cfg, job.dst)
-    return convert_audio(job.src, audio_cfg, job.dst)
+        return convert_image(job.src, image_cfg, delete_original, job.dst)
+    return convert_audio(job.src, audio_cfg, delete_original, job.dst)
 
 
 def run_batch(
@@ -63,6 +63,7 @@ def run_batch(
     media_type: str,
     image_cfg: ImageConfig,
     audio_cfg: AudioConfig,
+    delete_original: bool,
     workers: int = 1,
 ) -> BatchResult:
     """Convert every compatible file under `src_dir` into `out_dir`.
@@ -95,7 +96,7 @@ def run_batch(
     # For single worker - run conversion of media in sync using this loop
     if workers <= 1:
         for job in jobs:
-            if _run_one(job, media_type, image_cfg, audio_cfg):
+            if _run_one(job, media_type, image_cfg, audio_cfg, delete_original):
                 result.succeeded += 1
             else:
                 result.failed += 1
@@ -104,7 +105,7 @@ def run_batch(
     # For multiple workers, spawn the threads and run the conversion in parallel
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_run_one, job, media_type, image_cfg, audio_cfg): job
+            pool.submit(_run_one, job, media_type, image_cfg, audio_cfg, delete_original): job
             for job in jobs
         }
         for future in as_completed(futures):

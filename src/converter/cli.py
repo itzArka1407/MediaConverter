@@ -47,17 +47,17 @@ def _infer_type(src: Path) -> str | None:
         return "audio"
     return None
 
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="mediaconv",
         description="Convert images and audio between formats.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("input", type=Path, help="input file or directory")
-    p.add_argument("-o", "--output", type=Path, required=True, metavar="PATH",
+    p.add_argument("input", type=Path, default=Path("."), help="input file or directory")
+    p.add_argument("-o", "--output", type=Path, metavar="PATH",
                    help="output file (single input) or directory (batch input)")
     p.add_argument("--type", choices=["image", "audio"])
+    p.add_argument("-x", "--delete-original", action="store_true", default=False, help="Delete the original file after the conversion")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument(
         "--workers",
@@ -92,6 +92,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     return p
 
+def path_kind(p: Path) -> str | None:
+    """Find out the type of path for hte specified path: if a file or a dir"""
+    if p.is_file():
+        return "file"
+    if p.is_dir():
+        return "dir"
+    return None
 
 def main() -> int:
     parser = build_parser()
@@ -99,12 +106,34 @@ def main() -> int:
 
     _configure_logging(args.verbose)
 
-    if not args.input.exists():
-        log.error("input does not exist: %s", args.input)
-        return 1
-
     if args.workers < 1:
         log.error("--workers must be >= 1 (got %d)", args.workers)
+        return 1
+
+    # Check if the input is a file or directory
+    ikind = path_kind(args.input)                 
+    if ikind is None:
+        log.error("Input is not a file or directory: %s", args.input)
+        return 1
+
+    # Check if the output is not provided(provide it)
+    if args.output is None:
+        if ikind == "file":
+            suffix = args.type.lower()
+            if not suffix.startswith("."):
+                suffix = "." + suffix
+            args.output = args.input.with_suffix(suffix)
+        else:
+            args.output = args.input
+            log.info("No output given; using input directory: %s", args.output)
+
+    okind = path_kind(args.output)
+    if okind is not None and okind != ikind:
+        log.error("Output type (%s) doesn't match input type (%s)", okind, ikind)
+        return 1
+
+    if args.input.samefile(args.output):
+        log.error("The converter doesn't support rewriting the same file as of now")
         return 1
 
     # Build both configs once; batch and single-file paths share them.
@@ -122,7 +151,6 @@ def main() -> int:
         normalize=args.normalize,
     )
 
-
     # Single file: direct conversion
     if args.input.is_file():
         # if no typing is provided, compute the typing
@@ -134,9 +162,9 @@ def main() -> int:
                 args.type = media_type
 
         if args.type == "image":
-            ok = convert_image(args.input, image_cfg, args.output)
+            ok = convert_image(args.input, image_cfg, args.output, args.delete_original)
         else:
-            ok = convert_audio(args.input, audio_cfg, args.output)
+            ok = convert_audio(args.input, audio_cfg, args.output, args.delete_original)
         return 0 if ok else 1
 
     # Directory: batch (parallel if workers > 1)
@@ -148,6 +176,7 @@ def main() -> int:
         args.type if args.type is not None else parser.error("Provide type for the conversion"),
         image_cfg,
         audio_cfg,
+        delete_original=args.delete_original,
         workers=args.workers,
     )
     elapsed = time.perf_counter() - start
