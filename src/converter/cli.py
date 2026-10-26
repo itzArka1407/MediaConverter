@@ -56,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input", type=Path, default=Path("."), help="input file or directory")
     p.add_argument("-o", "--output", type=Path, metavar="PATH",
                    help="output file (single input) or directory (batch input)")
-    p.add_argument("--type", choices=["image", "audio", "all"], type=str.lower, default="all")
+    p.add_argument("--type", choices=["image", "audio", "all"], type=str.lower, default="all", help="The type of file for conversion:(default: all)")
     p.add_argument("--delete-original", action="store_true", default=False, help="Delete the original file after the conversion")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument(
@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"%(prog)s {get_version()}") # Version metadata
 
     img = p.add_argument_group("image options")
-    img.add_argument("--image-format", default="WEBP", metavar="FMT",
+    img.add_argument("--image-format", default="WEBP", type=str.lower, metavar="FMT",
                      help="output image format (JPEG, PNG, WEBP, AVIF, ...)")
     img.add_argument("--quality", type=int, default=90, metavar="INT",
                      help="output image quality 1-100 for lossy formats")
@@ -79,9 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help="strip EXIF metadata from output")
 
     aud = p.add_argument_group("audio options")
-    aud.add_argument("--audio-format", default="mp3", metavar="FMT",
+    aud.add_argument("--audio-format", default="OPUS", type=str.lower, metavar="FMT",
                      help="output audio format (mp3, ogg, opus, flac, wav, ...)")
-    aud.add_argument("--bitrate", default="320k",
+    aud.add_argument("--bitrate", default="256K",
                      help="bitrate for lossy formats, e.g. 192k")
     aud.add_argument("--sample-rate", type=int, metavar="HZ",
                      help="resample to this rate, e.g. 44100")
