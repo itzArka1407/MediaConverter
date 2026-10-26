@@ -56,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input", type=Path, default=Path("."), help="input file or directory")
     p.add_argument("-o", "--output", type=Path, metavar="PATH",
                    help="output file (single input) or directory (batch input)")
-    p.add_argument("--type", choices=["image", "audio"], type=str.lower, default=None)
+    p.add_argument("--type", choices=["image", "audio", "all"], type=str.lower, default="all")
     p.add_argument("--delete-original", action="store_true", default=False, help="Delete the original file after the conversion")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument(
@@ -119,11 +119,11 @@ def main() -> int:
         if media_type not in {"image", "audio"}:
             log.error("Cannot infer media type for: %s", args.input)
             return 1
-        if args.type is not None and args.type.lower() != media_type:
+        if args.type != "all" and args.type != media_type:
             log.error("--type %s doesn't match inferred type %s for %s",
                       args.type, media_type, args.input)
             return 1
-        args.type = media_type
+        args.type = media_type # For a single file, get the concrete file type to perform further operations
 
         # No output is provided for the file input - generate the appropriate one
         if args.output is None:
@@ -137,7 +137,7 @@ def main() -> int:
         args.output = args.input
 
     okind = path_kind(args.output)
-    if okind is not None and okind != ikind:
+    if okind is None or okind != ikind:
         log.error("Output type (%s) doesn't match input type (%s)", okind, ikind)
         return 1
 
@@ -170,27 +170,71 @@ def main() -> int:
         return 0 if ok else 1
 
     # Directory: batch (parallel if workers > 1)
-    start = time.perf_counter()
-    result = run_batch(
-        args.input,
-        args.output,
-        # For batch processing, typing is mandatory
-        args.type if args.type is not None else parser.error("Provide type for the conversion"),
-        image_cfg,
-        audio_cfg,
-        delete_original=args.delete_original,
-        workers=args.workers,
-    )
-    elapsed = time.perf_counter() - start
+    # For a strict type, only convert the type of file itself
+    if args.type != "all":
+        start = time.perf_counter()
+        result = run_batch(
+            args.input,
+            args.output,
+            args.type,
+            image_cfg,
+            audio_cfg,
+            delete_original=args.delete_original,
+            workers=args.workers,
+        )
+        elapsed = time.perf_counter() - start
 
-    log.info(
-        "batch complete: %d succeeded, %d failed in %.2fs",
-        result.succeeded,
-        result.failed,
-        elapsed,
-    )
-    return 0 if result.failed == 0 else 1
+        log.info(
+            "batch complete: %d succeeded, %d failed in %.2fs",
+            result.succeeded,
+            result.failed,
+            elapsed,
+        )
+        return 0 if result.failed == 0 else 1
+    
+    # For 'all' type, run both the batches of conversion of audio and images
+    else:
+        start1 = time.perf_counter()
+        # Perform the conversion of the images
+        result1 = run_batch(
+            args.input,
+            args.output,
+            "image",
+            image_cfg,
+            audio_cfg,
+            delete_original=args.delete_original,
+            workers=args.workers,
+        )
+        elapsed1 = time.perf_counter() - start1
 
+        start2 = time.perf_counter()
+        # Perform the conversion of the audio files
+        result2 = run_batch(
+            args.input,
+            args.output,
+            "audio",
+            image_cfg,
+            audio_cfg,
+            delete_original=args.delete_original,
+            workers=args.workers,
+        )
+        elapsed2 = time.perf_counter() - start2
+
+        # Log out the results
+        log.info(
+            "Image files' batch complete: %d succeeded, %d failed in %.2fs",
+            result1.succeeded,
+            result1.failed,
+            elapsed1,
+        )
+        log.info(
+            "Audio files' batch complete: %d succeeded, %d failed in %.2fs",
+            result2.succeeded,
+            result2.failed,
+            elapsed2,
+        )
+
+        return 0 if result1.failed == 0 and result2.failed == 0 else 1
 
 if __name__ == "__main__":
     raise SystemExit(main())
