@@ -1,17 +1,21 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "media-converter"
-version = "0.3.0"
+version = "0.3.1"
 description = "Professional image & audio format converter"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = ["Pillow>=10.3,<12"]
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Arkaprovo Das", email = "arkaprovodas2004@gmail.com" }]
 
 [project.optional-dependencies]
 avif = ["pillow-avif-plugin>=1.4"]
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "pip-tools>=7.4"]
+dev = ["pytest>=8.0", "ruff>=0.6", "basedpyright", "pip-tools>=7.4"]
 
 [project.scripts]
 mediaconv = "converter.cli:main"
@@ -24,7 +28,6 @@ strip-extras = true
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
