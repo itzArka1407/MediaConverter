@@ -4,6 +4,8 @@ import logging
 import subprocess
 from pathlib import Path
 
+from .deletion import delete_file
+
 from .config import AudioConfig
 
 log = logging.getLogger(__name__)
@@ -56,7 +58,7 @@ def _build_command(src: Path, cfg: AudioConfig, dst: Path) -> list[str]:
     return cmd
 
 
-def convert_audio(src: Path, cfg: AudioConfig, dst: Path | None = None) -> bool:
+def convert_audio(src: Path, cfg: AudioConfig, delete_original: bool, dst: Path | None = None) -> bool:
     """Convert an audio file by invoking ffmpeg."""
     if dst is None:
         dst = src.with_suffix(f".{cfg.format.lower()}")
@@ -80,5 +82,8 @@ def convert_audio(src: Path, cfg: AudioConfig, dst: Path | None = None) -> bool:
         return False
 
     log.info("Audio: %s => %s", src.name, dst.name)
+    # Delete the original file if the user specifies
+    if delete_original:
+        delete_file(src=src, dry_run=True)
     return True
 

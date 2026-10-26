@@ -1,0 +1,92 @@
+.TH MEDIACONV 1 "2025-01-01" "mediaconv 0.1.0" "User Commands"
+.SH NAME
+mediaconv \- convert images and audio files between formats
+.SH SYNOPSIS
+.B mediaconv
+[\fIOPTIONS\fR] \fIINPUT\fR
+.br
+.B mediaconv
+[\fIOPTIONS\fR] \fIINPUT\fR \fB\-\-output\fR \fIOUTPUT\fR
+.SH DESCRIPTION
+.B mediaconv
+converts image and audio files between supported formats. It accepts either
+a single file or a directory. When a directory is given, every supported
+file inside it is converted in parallel.
+.PP
+If
+.B \-\-output
+is omitted, the output path is derived from the input: a file keeps its
+name but gets the new format's suffix, and a directory is used as its own
+output (files are written next to their sources).
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Show a help message and exit.
+.TP
+.BR \-v ", " \-\-verbose
+Increase log verbosity. May be repeated.
+.TP
+.BI \-t " TYPE" ", " \-\-type " TYPE"
+Force the media type. One of
+.BR image " or " audio .
+Case-insensitive. Required when converting a directory.
+.TP
+.BI \-\-image\-format " FMT"
+Target image format (e.g.
+.BR png ", " jpeg ", " webp ).
+.TP
+.BI \-\-audio\-format " FMT"
+Target audio format (e.g.
+.BR mp3 ", " flac ", " ogg ).
+.TP
+.BI \-\-quality " N"
+Encoder quality, 0\-100. Higher is better and larger.
+.TP
+.BI \-\-bitrate " RATE"
+Audio bitrate (e.g.
+.BR 192k ", " 256k ).
+.TP
+.BI \-\-resize " WxH"
+Resize images to the given dimensions.
+.TP
+.BR \-\-no\-exif
+Strip EXIF metadata from images.
+.TP
+.BR \-\-delete\-original
+Delete each source file after its conversion succeeds. Use with care.
+.TP
+.BI \-w " N" ", " \-\-workers " N"
+Number of parallel workers for directory conversion. Must be at least 1.
+.SH EXAMPLES
+Convert a single image to WebP:
+.PP
+.RS 4
+.nf
+mediaconv photo.png \-\-image\-format webp
+.fi
+.RE
+.PP
+Convert every audio file in a directory, using four workers:
+.PP
+.RS 4
+.nf
+mediaconv music/ \-\-type audio \-\-audio\-format mp3 \-\-workers 4
+.fi
+.RE
+.SH EXIT STATUS
+.TP
+.B 0
+All conversions succeeded.
+.TP
+.B 1
+One or more conversions failed, or arguments were invalid.
+.SH FILES
+.TP
+.I ~/.config/mediaconv/config.toml
+Optional user configuration.
+.SH SEE ALSO
+.BR ffmpeg (1),
+.BR convert (1),
+.BR magick (1)
+.SH BUGS
+Report bugs at https://example.com/mediaconv/issues

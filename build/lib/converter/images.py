@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from converter.deletion import delete_file
+
 from .config import ImageConfig
 
 log = logging.getLogger(__name__)
@@ -17,10 +19,10 @@ SUPPORTED_FORMATS = {
 # Formats without any alpha - transparency is lost
 NO_ALPHA_FORMATS = {"JPEG", "JPG", "BMP"}
 
-def convert_image(src: Path, cfg: ImageConfig, dst: Path | None = None) -> bool:
+def convert_image(src: Path, cfg: ImageConfig, delete_original: bool, dst: Path | None = None) -> bool:
     """Convert an image from src to dst using the given config."""
     if dst is None:
-        dst = src.with_suffix(f".{cfg.format.lower()}")
+        dst = src.with_suffix(f".{cfg.format}")
 
     try:
         with Image.open(src) as img:
@@ -70,7 +72,11 @@ def convert_image(src: Path, cfg: ImageConfig, dst: Path | None = None) -> bool:
 
             img.save(dst, format=target, **save_kwargs)
 
-        log.info("Image: %s → %s", src.name, dst.name)
+        log.info("Image: %s -> %s", src.name, dst.name)
+
+        # Delete the original file if the user instructs to
+        if delete_original:
+            delete_file(src=src, dry_run=True)
         return True
 
     except FileNotFoundError:
