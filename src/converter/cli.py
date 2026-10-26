@@ -143,7 +143,7 @@ def main() -> int:
         log.error("Output type (%s) doesn't match input type (%s)", okind, ikind)
         return 1
 
-    if args.output.exists() and args.input.samefile(args.output):
+    if args.output.exists() and args.output.is_file() and args.input.samefile(args.output):
         log.error("The converter doesn't support rewriting the same file as of now")
         return 1
 
