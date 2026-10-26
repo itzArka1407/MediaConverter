@@ -4,6 +4,8 @@ import logging
 import subprocess
 from pathlib import Path
 
+from .helpers import DEV_MODE
+
 from .deletion import delete_file
 
 from .config import AudioConfig
@@ -84,6 +86,6 @@ def convert_audio(src: Path, cfg: AudioConfig, delete_original: bool, dst: Path 
     log.info("Audio: %s => %s", src.name, dst.name)
     # Delete the original file if the user specifies
     if delete_original:
-        delete_file(src=src, dry_run=True)
+        delete_file(src=src, dry_run=DEV_MODE)
     return True
 

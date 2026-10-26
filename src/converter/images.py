@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from converter.deletion import delete_file
+from .helpers import DEV_MODE
 
 from .config import ImageConfig
 
@@ -76,7 +77,7 @@ def convert_image(src: Path, cfg: ImageConfig, delete_original: bool, dst: Path 
 
         # Delete the original file if the user instructs to
         if delete_original:
-            delete_file(src=src, dry_run=True)
+            delete_file(src=src, dry_run=DEV_MODE)
         return True
 
     except FileNotFoundError:
