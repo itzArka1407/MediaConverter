@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output", type=Path, metavar="PATH",
                    help="output file (single input) or directory (batch input)")
     p.add_argument("--type", choices=["image", "audio"])
-    p.add_argument("-x", "--delete-original", action="store_true", default=False, help="Delete the original file after the conversion")
+    p.add_argument("--delete-original", action="store_true", default=False, help="Delete the original file after the conversion")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument(
         "--workers",
@@ -119,7 +119,18 @@ def main() -> int:
     # Check if the output is not provided(provide it)
     if args.output is None:
         if ikind == "file":
-            suffix = args.type.lower()
+            # Infer the type of input file -- give it a suffix accordingly and store the type onto the args' type
+            media_type = _infer_type(args.input)
+            if media_type == "image":
+                suffix = args.image_format.lower()
+            else:
+                suffix = args.audio_format.lower()
+            
+            if args.type is not None and args.type != media_type:
+                log.error("The type: %s provided for the conversion is invalid", args.type)
+                return 1
+            args.type = media_type # Assign the type to the args' type -- used to convert later
+
             if not suffix.startswith("."):
                 suffix = "." + suffix
             args.output = args.input.with_suffix(suffix)
@@ -132,7 +143,7 @@ def main() -> int:
         log.error("Output type (%s) doesn't match input type (%s)", okind, ikind)
         return 1
 
-    if args.input.samefile(args.output):
+    if args.output.exists() and args.input.samefile(args.output):
         log.error("The converter doesn't support rewriting the same file as of now")
         return 1
 
@@ -152,19 +163,11 @@ def main() -> int:
     )
 
     # Single file: direct conversion
-    if args.input.is_file():
-        # if no typing is provided, compute the typing
-        if args.type is None:
-            media_type = _infer_type(args.input)
-            if media_type is None:
-                parser.error("Cannot infer type of media")
-            else:
-                args.type = media_type
-
+    if ikind == "file":
         if args.type == "image":
-            ok = convert_image(args.input, image_cfg, args.output, args.delete_original)
+            ok = convert_image(args.input, image_cfg, args.delete_original, args.output)
         else:
-            ok = convert_audio(args.input, audio_cfg, args.output, args.delete_original)
+            ok = convert_audio(args.input, audio_cfg, args.delete_original, args.output)
         return 0 if ok else 1
 
     # Directory: batch (parallel if workers > 1)

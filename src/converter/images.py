@@ -19,7 +19,7 @@ SUPPORTED_FORMATS = {
 # Formats without any alpha - transparency is lost
 NO_ALPHA_FORMATS = {"JPEG", "JPG", "BMP"}
 
-def convert_image(src: Path, cfg: ImageConfig,delete_original: bool, dst: Path | None = None) -> bool:
+def convert_image(src: Path, cfg: ImageConfig, delete_original: bool, dst: Path | None = None) -> bool:
     """Convert an image from src to dst using the given config."""
     if dst is None:
         dst = src.with_suffix(f".{cfg.format.lower()}")
