@@ -98,6 +98,10 @@ def path_kind(p: Path) -> str | None:
         return "file"
     if p.is_dir():
         return "dir"
+    # File doesn't exist but is a valid file(will be created during conversion)
+    suffix = p.suffix
+    if suffix in IMAGE_EXTENSIONS or suffix in AUDIO_EXTENSIONS:
+        return "file"
     return None
 
 def main() -> int:
