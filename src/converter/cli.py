@@ -24,13 +24,11 @@ def _parse_resize(value: str) -> tuple[int, int]:
         return int(w), int(h)
     except (ValueError, AttributeError) as exc:
         raise argparse.ArgumentTypeError(
-            f"invalid resize format: {value} (expected WxH, e.g. 1920x1080)"
+            f"invalid resize format: {value!r} (expected WxH, e.g. 1920x1080)"
         ) from exc
 
-def _conv_to_rgba(color: str | None) -> tuple[int, int, int, int] | None:
+def _conv_to_rgba(color: str) -> tuple[int, int, int, int]:
     """Convert a color str to rgba"""
-    if color is None:
-        return None
     try:
         img = ImageColor.getrgb(color)
         if len(img) == 3:
@@ -38,7 +36,7 @@ def _conv_to_rgba(color: str | None) -> tuple[int, int, int, int] | None:
         return img
     except ValueError:
         raise argparse.ArgumentTypeError(
-                f"Invalid overlay color code provided: {color}"
+                f"Invalid overlay color code provided: {color!r}"
         )
 
 def _configure_logging(verbose: bool) -> None:
