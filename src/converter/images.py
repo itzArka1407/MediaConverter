@@ -26,7 +26,7 @@ def convert_image(src: Path, cfg: ImageConfig, delete_original: bool, dst: Path 
         dst = src.with_suffix(f".{cfg.format}")
 
     try:
-        with Image.open(src) as img:
+        with Image.open(src).convert("RGBA") as img:
             target = cfg.format.upper() # Check the conversion format
 
             if target not in SUPPORTED_FORMATS:
@@ -37,16 +37,21 @@ def convert_image(src: Path, cfg: ImageConfig, delete_original: bool, dst: Path 
             exif = img.info.get("exif") if cfg.keep_exif else None
             icc = img.info.get("icc_profile")
 
-            # Flatten alpha for formats that can't store it
-            if target in NO_ALPHA_FORMATS and img.mode in ("RGBA", "LA", "P"):
-                background = Image.new("RGB", img.size, (255, 255, 255))
-                img = img.convert("RGBA")
-                # For mask: at alpha places, convert it to white pixels(taken from background above which is a white image basically)
-                # For opaque pixels, take it from image itself
-                background.paste(img, mask=img.split()[-1])
-                img = background
-            elif img.mode == "P" and target not in {"GIF", "PNG"}:
-                img = img.convert("RGB")
+            # If user has defined an overlay
+            if cfg.rgba_overlay is not None:
+                overlay = Image.new("RGBA", img.size, cfg.rgba_overlay)
+                img = Image.alpha_composite(img, overlay)
+
+            # When converting an alpha img to non-alpha img, fill up gaps
+            # TODO: For now, this is only making it white, later, make it user-defined
+            if target in NO_ALPHA_FORMATS:
+            # If image is totally opaque(just the format supports alpha)
+                if img.getchannel("A").getextrema() == (255, 255):
+                    img = img.convert("RGB")            # opaque everywhere → cheap path
+                else:
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[-1])
+                    img = background
 
             # Resize using high-quality Lanczos
             if cfg.resize is not None:

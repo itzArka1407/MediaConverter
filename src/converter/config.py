@@ -10,6 +10,7 @@ class ImageConfig:
     resize: tuple[int,int]  | None = None # If some resize is being done on the file
     keep_exif: bool = True
     optimize: bool = True
+    rgba_overlay: tuple[int, int, int, int] | None
 
 @dataclass(kw_only=True)
 class AudioConfig:

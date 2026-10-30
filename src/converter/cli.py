@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from PIL import ImageColor
 
 from .metadata import get_version
 
@@ -23,9 +24,22 @@ def _parse_resize(value: str) -> tuple[int, int]:
         return int(w), int(h)
     except (ValueError, AttributeError) as exc:
         raise argparse.ArgumentTypeError(
-            f"invalid resize format: {value!r} (expected WxH, e.g. 1920x1080)"
+            f"invalid resize format: {value} (expected WxH, e.g. 1920x1080)"
         ) from exc
 
+def _conv_to_rgba(color: str | None) -> tuple[int, int, int, int] | None:
+    """Convert a color str to rgba"""
+    if color is None:
+        return None
+    try:
+        img = ImageColor.getrgb(color)
+        if len(img) == 3:
+            return img + (255,)
+        return img
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+                f"Invalid overlay color code provided: {color}"
+        )
 
 def _configure_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
@@ -50,7 +64,7 @@ def _infer_type(src: Path) -> str | None:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="mediaconv",
-        description="Convert images and audio between formats.",
+        description="Coverter for image and audio files.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("input", type=Path, default=Path("."), help="input file or directory")
@@ -66,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.cpu_count() or 1,
         help="number of parallel worker threads (default: CPU count)",
     )
-    p.add_argument("--version", action="version", version=f"%(prog)s {get_version()}") # Version metadata
+    p.add_argument("--version", "-V", action="version", version=f"%(prog)s {get_version()}") # Version metadata
 
     img = p.add_argument_group("image options")
     img.add_argument("--image-format", default="WEBP", type=str.lower, metavar="FMT",
@@ -77,6 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
                      help="resize output, e.g. 1920x1080")
     img.add_argument("--no-exif", action="store_true",
                      help="strip EXIF metadata from output")
+    img.add_argument("--overlay", metavar="COLOR", type=_conv_to_rgba, default=None, help="produce an overlay over the image")
 
     aud = p.add_argument_group("audio options")
     aud.add_argument("--audio-format", default="OPUS", type=str.lower, metavar="FMT",
@@ -156,6 +171,7 @@ def main() -> int:
         quality=args.quality,
         resize=args.resize,
         keep_exif=not args.no_exif,
+        rgba_overlay= args.overlay,
     )
     audio_cfg = AudioConfig(
         format=args.audio_format,
